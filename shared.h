@@ -6,6 +6,6 @@
 typedef struct{
     unsigned int seconds;
     unsigned int nanoseconds;
-} Simclock;
+} SimClock;
 
 #endif

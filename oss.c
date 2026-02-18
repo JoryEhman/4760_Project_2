@@ -5,13 +5,13 @@
 #include "shared.h"
 
 int main(){
-    int shmid = shmget(SHM_KEY, sizeof(Simclock), IPC_CREAT | 0666);
+    int shmid = shmget(SHM_KEY, sizeof(SimClock), IPC_CREAT | 0666);
     if (shmid == -1){
         perror("shmget failed");
         exit(1);
     }
 
-    SimClock *clock = (SimClock *) shmat(shimd, NULL, 0);
+    SimClock *clock = (SimClock *) shmat(shmid, NULL, 0);
     if (clock == (void *) -1) {
         perror("shmat failed");
         exit(1);
