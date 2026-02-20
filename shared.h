@@ -7,13 +7,11 @@
 #define BILLION 1000000000
 #define MAX_PROCS 20
 
-/* Simulated clock structure in shared memory */
 typedef struct {
     unsigned int seconds;
     unsigned int nanoseconds;
 } SimClock;
 
-/* Process Control Block */
 typedef struct {
     int occupied;
     pid_t pid;

@@ -1,5 +1,5 @@
 /**************************************************************
-* worker.c
+ * worker.c
  **************************************************************/
 
 #include <stdio.h>
@@ -56,13 +56,23 @@ int main(int argc, char *argv[]) {
 
         if (curSec > targetSec ||
            (curSec == targetSec && curNano >= targetNano)) {
+
+            printf("WORKER PID:%d PPID:%d\n", getpid(), getppid());
+            printf("SysClockS:%u SysClockNano:%u TermTimeS:%u TermTimeNano:%u\n",
+                   curSec, curNano, targetSec, targetNano);
             printf("--Terminating\n");
+
             break;
-           }
+        }
 
         if (curSec > lastPrinted) {
+
+            printf("WORKER PID:%d PPID:%d\n", getpid(), getppid());
+            printf("SysClockS:%u SysClockNano:%u TermTimeS:%u TermTimeNano:%u\n",
+                   curSec, curNano, targetSec, targetNano);
             printf("--%u seconds have passed since starting\n",
                    curSec - startSec);
+
             lastPrinted = curSec;
         }
     }
