@@ -1,20 +1,5 @@
 /*
 worker.c
-
-This file implements the worker process executed by OSS.
-
-Each worker:
-- Attaches to the shared simulated clock.
-- Reads its assigned termination time from command-line arguments.
-- Prints its start information when it begins execution.
-- Continuously monitors the shared clock.
-- Prints a message every simulated second that passes.
-- Terminates when the simulated time reaches its assigned
-  ending time.
-- Detaches from shared memory before exiting.
-
-Workers do not modify the clock. They only observe it and
-self-terminate when their scheduled runtime expires.
 */
 
 #include <stdio.h>
@@ -27,27 +12,43 @@ self-terminate when their scheduled runtime expires.
 int main(int argc, char *argv[]) {
 
     if (argc < 3) {
-        fprintf(stderr, "Usage: worker endSec endNano\n");
+        fprintf(stderr, "Usage: worker intervalSec intervalNano\n");
         exit(1);
     }
 
-    unsigned int targetSec = atoi(argv[1]);
-    unsigned int targetNano = atoi(argv[2]);
+    unsigned int intervalSec  = atoi(argv[1]);
+    unsigned int intervalNano = atoi(argv[2]);
 
+    printf("Worker starting, PID:%d PPID:%d\n", getpid(), getppid());
+    printf("Called with:\n");
+    printf("Interval: %u seconds, %u nanoseconds\n",
+           intervalSec, intervalNano);
+    fflush(stdout);
+
+    /* ===== SHARED MEMORY ERROR CHECK FIX ===== */
     int shmid = shmget(SHM_KEY, sizeof(SimClock), 0666);
     if (shmid == -1) {
         perror("worker shmget");
         exit(1);
     }
 
-    SimClock *clock = (SimClock*) shmat(shmid, NULL, 0);
+    volatile SimClock *clock = (volatile SimClock*) shmat(shmid, NULL, 0);
     if (clock == (void*) -1) {
         perror("worker shmat");
         exit(1);
     }
+    /* ========================================== */
 
     unsigned int startSec = clock->seconds;
     unsigned int startNano = clock->nanoseconds;
+
+    unsigned int targetSec  = startSec + intervalSec;
+    unsigned int targetNano = startNano + intervalNano;
+
+    if (targetNano >= BILLION) {
+        targetSec++;
+        targetNano -= BILLION;
+    }
 
     printf("WORKER PID: %d PPID: %d\n", getpid(), getppid());
     printf("SysClockS: %u SysClockNano: %u TermTimeS: %u TermTimeNano: %u\n",
@@ -86,6 +87,6 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    shmdt(clock);
+    shmdt((const void *)clock);
     return 0;
 }

@@ -14,4 +14,4 @@ worker: worker.o
 	$(CC) $(CFLAGS) -c $<
 
 clean:
-	rm -f *.o $(TARGETS)
+	rm -f *.o *.txt $(TARGETS)

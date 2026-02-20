@@ -13,13 +13,6 @@ The program is responsible for:
 - Calculating total runtime statistics for all workers.
 - Handling SIGINT (Ctrl+C) and SIGALRM (60-second timeout) to ensure
   proper cleanup of child processes and shared memory.
-
-The main loop advances the simulated clock, checks for terminated
-children, launches new workers when allowed, and prints the system
-state every 0.5 simulated seconds.
-
-On termination (normal or signal), all remaining child processes are
-killed and shared memory is detached and removed.
 */
 
 #include <stdio.h>
@@ -45,19 +38,23 @@ int childrenInSystem = 0;
 
 unsigned long long totalRuntimeNano = 0;
 
-/* ===== Correct Defaults ===== */
 int n = 1;
 int simul = 1;
 float timelimit = 0;
 float interval = 0;
-/* ============================================================ */
 
 void cleanup(int sig) {
 
-    const char msg[] =
-        "\nOSS: 60-second timeout reached. Cleaning up and exiting.\n";
-
-    write(STDOUT_FILENO, msg, sizeof(msg) - 1);
+    if (sig == SIGALRM) {
+        const char msg[] =
+            "\nOSS: 60-second timeout reached. Cleaning up and exiting.\n";
+        write(STDOUT_FILENO, msg, sizeof(msg) - 1);
+    }
+    else if (sig == SIGINT) {
+        const char msg[] =
+            "\nOSS: Caught SIGINT (Ctrl+C). Cleaning up and exiting.\n";
+        write(STDOUT_FILENO, msg, sizeof(msg) - 1);
+    }
 
     for (int i = 0; i < MAX_PROCS; i++) {
         if (processTable[i].occupied) {
@@ -97,32 +94,39 @@ int findFreePCB() {
 
 void printProcessTable() {
 
-    printf("\nOSS PID: %d SysClockS: %u SysClockNano: %u\n",
-           getpid(), simClock->seconds, simClock->nanoseconds);
+    char buffer[8192];
+    int len = 0;
 
-    printf("Process Table:\n");
-    printf("%-5s %-8s %-8s %-10s %-12s %-12s %-15s\n",
-           "Entry", "Occupied", "PID",
-           "StartS", "StartN",
-           "EndingTimeS", "EndingTimeNano");
+    len += snprintf(buffer + len, sizeof(buffer) - len,
+        "\nOSS PID: %d SysClockS: %u SysClockNano: %u\n",
+        getpid(), simClock->seconds, simClock->nanoseconds);
+
+    len += snprintf(buffer + len, sizeof(buffer) - len,
+        "Process Table:\n"
+        "%-5s %-8s %-8s %-10s %-12s %-12s %-15s\n",
+        "Entry", "Occupied", "PID",
+        "StartS", "StartN",
+        "EndingTimeS", "EndingTimeNano");
 
     for (int i = 0; i < MAX_PROCS; i++) {
-
         if (processTable[i].occupied) {
-            printf("%-5d %-8d %-8d %-10u %-12u %-12u %-15u\n",
-                   i,
-                   processTable[i].occupied,
-                   processTable[i].pid,
-                   processTable[i].startSeconds,
-                   processTable[i].startNano,
-                   processTable[i].endingTimeSeconds,
-                   processTable[i].endingTimeNano);
+            len += snprintf(buffer + len, sizeof(buffer) - len,
+                "%-5d %-8d %-8d %-10u %-12u %-12u %-15u\n",
+                i,
+                processTable[i].occupied,
+                processTable[i].pid,
+                processTable[i].startSeconds,
+                processTable[i].startNano,
+                processTable[i].endingTimeSeconds,
+                processTable[i].endingTimeNano);
         } else {
-            printf("%-5d %-8d\n", i, 0);
+            len += snprintf(buffer + len, sizeof(buffer) - len,
+                "%-5d %-8d %-8d %-10d %-12d %-12d %-15d\n",
+                i, 0, 0, 0, 0, 0, 0);
         }
     }
 
-    fflush(stdout);
+    write(STDOUT_FILENO, buffer, len);
 }
 
 void parseArgs(int argc, char *argv[]) {
@@ -166,14 +170,14 @@ void parseArgs(int argc, char *argv[]) {
                 break;
 
             case 'h':
-    			printf("Usage: ./oss -n x -s x -t x -i x\n\n");
-    			printf("Options:\n");
-    			printf("  -n x : Total number of worker processes to launch (minimum 1)\n");
-    			printf("  -s x : Maximum number of concurrent processes allowed (minimum 1)\n");
-    			printf("  -t x : Total simulated runtime limit in seconds (must be >= 0)\n");
-    			printf("  -i x : Interval (in seconds) between launching processes (must be >= 0)\n");
-    			printf("  -h   : Display this help message\n");
-    			exit(0);
+                printf("Usage: ./oss -n x -s x -t x -i x\n\n");
+                printf("Options:\n");
+                printf("  -n x : Total number of worker processes to launch (minimum 1)\n");
+                printf("  -s x : Maximum number of concurrent processes allowed (minimum 1)\n");
+                printf("  -t x : Worker runtime duration in seconds (>= 0)\n");
+                printf("  -i x : Interval (in seconds) between launching processes (>= 0)\n");
+                printf("  -h   : Display this help message\n");
+                exit(0);
 
             default:
                 fprintf(stderr, "Usage: ./oss -n x -s x -t x -i x\n");
@@ -186,25 +190,36 @@ int main(int argc, char *argv[]) {
 
     parseArgs(argc, argv);
 
-    /* ===== REQUIRED STARTUP OUTPUT ===== */
     printf("OSS starting, PID: %d PPID: %d\n", getpid(), getppid());
     printf("Called with:\n");
     printf("-n %d\n", n);
     printf("-s %d\n", simul);
     printf("-t %.3f\n", timelimit);
     printf("-i %.3f\n\n", interval);
-    fflush(stdout);
-    /* ==================================== */
+
+	fflush(stdout);
 
     signal(SIGALRM, cleanup);
     signal(SIGINT, cleanup);
     alarm(60);
 
-    shmid = shmget(SHM_KEY, sizeof(SimClock), IPC_CREAT | 0666);
-    if (shmid == -1) { perror("shmget"); exit(1); }
+    /* ===== SHARED MEMORY ERROR CHECK FIX ===== */
+    shmid = shmget(SHM_KEY, sizeof(SimClock), IPC_CREAT | IPC_EXCL | 0666);
+if (shmid == -1) {
+    shmctl(shmget(SHM_KEY, sizeof(SimClock), 0666), IPC_RMID, NULL);
+    shmid = shmget(SHM_KEY, sizeof(SimClock), IPC_CREAT | IPC_EXCL | 0666);
+    if (shmid == -1) {
+        perror("oss shmget");
+        exit(1);
+    }
+}
 
     simClock = (SimClock*) shmat(shmid, NULL, 0);
-    if (simClock == (void*) -1) { perror("shmat"); exit(1); }
+    if (simClock == (void*) -1) {
+        perror("oss shmat");
+        exit(1);
+    }
+    /* ========================================== */
 
     simClock->seconds = 0;
     simClock->nanoseconds = 0;
@@ -222,7 +237,7 @@ int main(int argc, char *argv[]) {
         incrementClock();
 
         unsigned long long currentNano = getSimTimeNano();
-        unsigned long long boundary = currentNano / 500000000ULL;
+        unsigned long long boundary = currentNano / BILLION;
 
         if (boundary > lastPrintBoundary) {
             printProcessTable();
@@ -232,30 +247,34 @@ int main(int argc, char *argv[]) {
         int status;
         pid_t pid;
 
-        while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+               while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+
 
             for (int i = 0; i < MAX_PROCS; i++) {
-
                 if (processTable[i].occupied &&
                     processTable[i].pid == pid) {
 
-                    unsigned long long startNano =
+                    unsigned long long start =
                         ((unsigned long long)processTable[i].startSeconds * BILLION)
                         + processTable[i].startNano;
 
-                    unsigned long long endNano =
+                    unsigned long long end =
                         ((unsigned long long)processTable[i].endingTimeSeconds * BILLION)
                         + processTable[i].endingTimeNano;
 
-                    totalRuntimeNano += (endNano - startNano);
+                    if (end > start)
+                        totalRuntimeNano += (end - start);
 
                     processTable[i].occupied = 0;
                     childrenInSystem--;
                     totalTerminated++;
+
                     break;
                 }
             }
         }
+
+		if (totalLaunched == n && childrenInSystem == 0) break;
 
         if (totalLaunched < n &&
             childrenInSystem < simul &&
@@ -265,18 +284,17 @@ int main(int argc, char *argv[]) {
 
             if (idx != -1) {
 
-                int secPart = (int)timelimit;
-                int nanoPart =
-                    (int)((timelimit - secPart) * BILLION);
+                int durSec = (int)timelimit;
+                int durNano = (int)((timelimit - durSec) * BILLION);
 
                 processTable[idx].startSeconds = simClock->seconds;
                 processTable[idx].startNano = simClock->nanoseconds;
 
                 processTable[idx].endingTimeSeconds =
-                    processTable[idx].startSeconds + secPart;
+                    processTable[idx].startSeconds + durSec;
 
                 processTable[idx].endingTimeNano =
-                    processTable[idx].startNano + nanoPart;
+                    processTable[idx].startNano + durNano;
 
                 if (processTable[idx].endingTimeNano >= BILLION) {
                     processTable[idx].endingTimeSeconds++;
@@ -287,13 +305,11 @@ int main(int argc, char *argv[]) {
 
                 if (cpid == 0) {
 
-                    char secStr[20];
-                    char nanoStr[20];
+                    char secStr[32];
+                    char nanoStr[32];
 
-                    sprintf(secStr, "%u",
-                            processTable[idx].endingTimeSeconds);
-                    sprintf(nanoStr, "%u",
-                            processTable[idx].endingTimeNano);
+                    snprintf(secStr, sizeof(secStr), "%d", durSec);
+                    snprintf(nanoStr, sizeof(nanoStr), "%d", durNano);
 
                     execl("./worker", "worker",
                           secStr, nanoStr, NULL);
