@@ -25,8 +25,10 @@ int main(int argc, char *argv[]) {
            intervalSec, intervalNano);
     fflush(stdout);
 
-    /* ===== SHARED MEMORY ERROR CHECK FIX ===== */
-    int shmid = shmget(SHM_KEY, sizeof(SimClock), 0666);
+    /* ===== SHARED MEMORY (FIXED KEY) ===== */
+    key_t key = getShmKey();
+
+    int shmid = shmget(key, sizeof(SimClock), 0666);
     if (shmid == -1) {
         perror("worker shmget");
         exit(1);
@@ -37,7 +39,7 @@ int main(int argc, char *argv[]) {
         perror("worker shmat");
         exit(1);
     }
-    /* ========================================== */
+    /* ===================================== */
 
     unsigned int startSec = clock->seconds;
     unsigned int startNano = clock->nanoseconds;

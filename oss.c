@@ -1,18 +1,5 @@
 /*
 oss.c
-
-This file implements the operating system simulator (OSS) for the project.
-
-The program is responsible for:
-- Maintaining a simulated system clock in shared memory.
-- Managing a fixed-size Process Control Block (PCB) table.
-- Launching worker processes according to command-line parameters.
-- Enforcing a maximum number of concurrent processes.
-- Tracking process start and termination times.
-- Printing the process table at regular simulated time intervals.
-- Calculating total runtime statistics for all workers.
-- Handling SIGINT (Ctrl+C) and SIGALRM (60-second timeout) to ensure
-  proper cleanup of child processes and shared memory.
 */
 
 #include <stdio.h>
@@ -197,29 +184,28 @@ int main(int argc, char *argv[]) {
     printf("-t %.3f\n", timelimit);
     printf("-i %.3f\n\n", interval);
 
-	fflush(stdout);
+    fflush(stdout);
 
     signal(SIGALRM, cleanup);
     signal(SIGINT, cleanup);
     alarm(60);
 
-    /* ===== SHARED MEMORY ERROR CHECK FIX ===== */
-    shmid = shmget(SHM_KEY, sizeof(SimClock), IPC_CREAT | IPC_EXCL | 0666);
-if (shmid == -1) {
-    shmctl(shmget(SHM_KEY, sizeof(SimClock), 0666), IPC_RMID, NULL);
-    shmid = shmget(SHM_KEY, sizeof(SimClock), IPC_CREAT | IPC_EXCL | 0666);
+    /* ===== SHARED MEMORY (FIXED KEY) ===== */
+    key_t key = getShmKey();
+
+    // Create if not exists. Do NOT IPC_EXCL on opsys (shared environment).
+    shmid = shmget(key, sizeof(SimClock), IPC_CREAT | 0666);
     if (shmid == -1) {
         perror("oss shmget");
         exit(1);
     }
-}
 
     simClock = (SimClock*) shmat(shmid, NULL, 0);
     if (simClock == (void*) -1) {
         perror("oss shmat");
         exit(1);
     }
-    /* ========================================== */
+    /* ===================================== */
 
     simClock->seconds = 0;
     simClock->nanoseconds = 0;
@@ -247,8 +233,7 @@ if (shmid == -1) {
         int status;
         pid_t pid;
 
-               while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-
+        while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
 
             for (int i = 0; i < MAX_PROCS; i++) {
                 if (processTable[i].occupied &&
@@ -274,7 +259,7 @@ if (shmid == -1) {
             }
         }
 
-		if (totalLaunched == n && childrenInSystem == 0) break;
+        if (totalLaunched == n && childrenInSystem == 0) break;
 
         if (totalLaunched < n &&
             childrenInSystem < simul &&

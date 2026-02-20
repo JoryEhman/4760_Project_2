@@ -1,28 +1,29 @@
 /*
 shared.h
-
-This header file defines shared data structures and constants used
-by both OSS and worker processes.
-
-It includes:
-- The shared memory key used for IPC.
-- The simulated clock structure.
-- The Process Control Block (PCB) structure.
-- Project-wide constants such as BILLION (nanoseconds per second)
-  and MAX_PROCS (maximum number of concurrent processes).
-
-This file ensures both OSS and workers use identical structure
-definitions when accessing shared memory.
 */
 
 #ifndef SHARED_H
 #define SHARED_H
 
 #include <sys/types.h>
+#include <sys/ipc.h>   // key_t, ftok
+#include <stdio.h>     // perror
+#include <stdlib.h>    // exit
 
-#define SHM_KEY 0x1234
 #define BILLION 1000000000
 #define MAX_PROCS 20
+
+// Generate a unique key based on a file in *this* project directory.
+// Using "." means "current directory", so each student/project folder
+// gets a different key on opsys.
+static inline key_t getShmKey(void) {
+    key_t key = ftok(".", 'E');   // 'E' can be any project-specific char
+    if (key == -1) {
+        perror("ftok");
+        exit(1);
+    }
+    return key;
+}
 
 typedef struct {
     unsigned int seconds;
