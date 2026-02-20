@@ -25,11 +25,12 @@ int childrenInSystem = 0;
 
 unsigned long long totalRuntimeNano = 0;
 
-/* Defaults */
-int n = 5;
-int simul = 2;
-float timelimit = 4.0;
-float interval = 0.5;
+/* ===== Correct Defaults ===== */
+int n = 1;            // must be >= 1
+int simul = 1;        // must be >= 1
+float timelimit = 0;  // can be 0
+float interval = 0;   // can be 0
+/* ============================================================ */
 
 void cleanup(int sig) {
 
@@ -43,9 +44,10 @@ void cleanup(int sig) {
 
     shmdt(simClock);
     shmctl(shmid, IPC_RMID, NULL);
-
     exit(1);
 }
+
+/* ============================================================ */
 
 void incrementClock() {
     simClock->nanoseconds += CLOCK_INCREMENT;
@@ -67,6 +69,8 @@ int findFreePCB() {
             return i;
     return -1;
 }
+
+/* ============================================================ */
 
 void printProcessTable() {
 
@@ -94,19 +98,24 @@ void printProcessTable() {
             printf("%-5d %-8d\n", i, 0);
         }
     }
+
+    fflush(stdout);
 }
+
+/* ============================================================ */
 
 void parseArgs(int argc, char *argv[]) {
 
     int opt;
 
     while ((opt = getopt(argc, argv, "n:s:t:i:")) != -1) {
+
         switch (opt) {
 
             case 'n':
                 n = atoi(optarg);
                 if (n < 1) {
-                    fprintf(stderr, "-n must be >= 1\n");
+                    fprintf(stderr, "Error: -n must be >= 1\n");
                     exit(1);
                 }
                 break;
@@ -114,7 +123,7 @@ void parseArgs(int argc, char *argv[]) {
             case 's':
                 simul = atoi(optarg);
                 if (simul < 1) {
-                    fprintf(stderr, "-s must be >= 1\n");
+                    fprintf(stderr, "Error: -s must be >= 1\n");
                     exit(1);
                 }
                 break;
@@ -122,7 +131,7 @@ void parseArgs(int argc, char *argv[]) {
             case 't':
                 timelimit = atof(optarg);
                 if (timelimit < 0) {
-                    fprintf(stderr, "-t must be >= 0\n");
+                    fprintf(stderr, "Error: -t cannot be negative\n");
                     exit(1);
                 }
                 break;
@@ -130,40 +139,34 @@ void parseArgs(int argc, char *argv[]) {
             case 'i':
                 interval = atof(optarg);
                 if (interval < 0) {
-                    fprintf(stderr, "-i must be >= 0\n");
+                    fprintf(stderr, "Error: -i cannot be negative\n");
                     exit(1);
                 }
                 break;
 
             default:
-                fprintf(stderr, "Usage: ./oss -n x -s x -t x -i x\n");
+                fprintf(stderr,
+                        "Usage: ./oss -n x -s x -t x -i x\n");
                 exit(1);
         }
     }
 }
 
+/* ============================================================ */
+
 int main(int argc, char *argv[]) {
 
-
     parseArgs(argc, argv);
-
-    printf("OSS starting, PID:%d PPID:%d\n", getpid(), getppid());
-    printf("Called with:\n");
-    printf("-n %d\n", n);
-    printf("-s %d\n", simul);
-    printf("-t %.1f\n", timelimit);
-    printf("-i %.1f\n", interval);
-    printf("\n");
 
     signal(SIGALRM, cleanup);
     signal(SIGINT, cleanup);
     alarm(60);
 
     shmid = shmget(SHM_KEY, sizeof(SimClock), IPC_CREAT | 0666);
-    if (shmid == -1) { perror("oss shmget"); exit(1); }
+    if (shmid == -1) { perror("shmget"); exit(1); }
 
     simClock = (SimClock*) shmat(shmid, NULL, 0);
-    if (simClock == (void*) -1) { perror("oss shmat"); exit(1); }
+    if (simClock == (void*) -1) { perror("shmat"); exit(1); }
 
     simClock->seconds = 0;
     simClock->nanoseconds = 0;
@@ -172,12 +175,14 @@ int main(int argc, char *argv[]) {
         processTable[i].occupied = 0;
 
     unsigned long long lastPrintBoundary = 0;
+    unsigned long long nextLaunchTime = 0;
+    unsigned long long intervalNano =
+        (unsigned long long)(interval * BILLION);
 
-    while (totalTerminated < n) {
+    while (totalLaunched < n || childrenInSystem > 0) {
 
         incrementClock();
 
-        /* --------- FIXED PCB PRINT LOGIC --------- */
         unsigned long long currentNano = getSimTimeNano();
         unsigned long long boundary = currentNano / 500000000ULL;
 
@@ -185,7 +190,8 @@ int main(int argc, char *argv[]) {
             printProcessTable();
             lastPrintBoundary = boundary;
         }
-        /* ----------------------------------------- */
+
+        /* ===== Reap Children (FIXED RUNTIME ACCOUNTING) ===== */
 
         int status;
         pid_t pid;
@@ -201,7 +207,6 @@ int main(int argc, char *argv[]) {
                         ((unsigned long long)processTable[i].startSeconds * BILLION)
                         + processTable[i].startNano;
 
-                    /* USE STORED TERMINATION TIME — NOT CURRENT CLOCK */
                     unsigned long long endNano =
                         ((unsigned long long)processTable[i].endingTimeSeconds * BILLION)
                         + processTable[i].endingTimeNano;
@@ -212,18 +217,23 @@ int main(int argc, char *argv[]) {
                     childrenInSystem--;
                     totalTerminated++;
                     break;
-                    }
+                }
             }
         }
 
-        if (totalLaunched < n && childrenInSystem < simul) {
+        /* ===== Launch Logic ===== */
+
+        if (totalLaunched < n &&
+            childrenInSystem < simul &&
+            currentNano >= nextLaunchTime) {
 
             int idx = findFreePCB();
 
             if (idx != -1) {
 
                 int secPart = (int)timelimit;
-                int nanoPart = (int)((timelimit - secPart) * BILLION);
+                int nanoPart =
+                    (int)((timelimit - secPart) * BILLION);
 
                 pid_t cpid = fork();
 
@@ -260,6 +270,7 @@ int main(int argc, char *argv[]) {
 
                 childrenInSystem++;
                 totalLaunched++;
+                nextLaunchTime = currentNano + intervalNano;
             }
         }
     }

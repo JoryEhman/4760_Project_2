@@ -12,12 +12,13 @@
 int main(int argc, char *argv[]) {
 
     if (argc < 3) {
-        fprintf(stderr, "Usage: worker sec nano\n");
+        fprintf(stderr, "Usage: worker durationSec durationNano\n");
         exit(1);
     }
 
-    unsigned int termSec = atoi(argv[1]);
-    unsigned int termNano = atoi(argv[2]);
+    /* Duration requested */
+    unsigned int durationSec = atoi(argv[1]);
+    unsigned int durationNano = atoi(argv[2]);
 
     int shmid = shmget(SHM_KEY, sizeof(SimClock), 0666);
     if (shmid == -1) {
@@ -31,11 +32,13 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
+    /* Record start time */
     unsigned int startSec = clock->seconds;
     unsigned int startNano = clock->nanoseconds;
 
-    unsigned int targetSec = startSec + termSec;
-    unsigned int targetNano = startNano + termNano;
+    /* Compute absolute termination time */
+    unsigned int targetSec = startSec + durationSec;
+    unsigned int targetNano = startNano + durationNano;
 
     if (targetNano >= BILLION) {
         targetSec++;
@@ -46,6 +49,7 @@ int main(int argc, char *argv[]) {
     printf("SysClockS:%u SysClockNano:%u TermTimeS:%u TermTimeNano:%u\n",
            startSec, startNano, targetSec, targetNano);
     printf("--Just Starting\n");
+    fflush(stdout);
 
     unsigned int lastPrinted = startSec;
 
@@ -54,6 +58,7 @@ int main(int argc, char *argv[]) {
         unsigned int curSec = clock->seconds;
         unsigned int curNano = clock->nanoseconds;
 
+        /* Correct relative termination check */
         if (curSec > targetSec ||
            (curSec == targetSec && curNano >= targetNano)) {
 
@@ -61,7 +66,7 @@ int main(int argc, char *argv[]) {
             printf("SysClockS:%u SysClockNano:%u TermTimeS:%u TermTimeNano:%u\n",
                    curSec, curNano, targetSec, targetNano);
             printf("--Terminating\n");
-
+            fflush(stdout);
             break;
         }
 
@@ -72,6 +77,7 @@ int main(int argc, char *argv[]) {
                    curSec, curNano, targetSec, targetNano);
             printf("--%u seconds have passed since starting\n",
                    curSec - startSec);
+            fflush(stdout);
 
             lastPrinted = curSec;
         }
