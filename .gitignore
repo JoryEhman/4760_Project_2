@@ -1,0 +1,12 @@
+# Object files
+*.o
+
+# Compiled binaries
+oss
+worker
+
+# Mac files
+.DS_Store
+
+# IDE files
+.idea/
