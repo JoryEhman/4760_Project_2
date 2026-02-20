@@ -1,6 +1,26 @@
-/**************************************************************
- * oss.c
- **************************************************************/
+/*
+oss.c
+
+This file implements the operating system simulator (OSS) for the project.
+
+The program is responsible for:
+- Maintaining a simulated system clock in shared memory.
+- Managing a fixed-size Process Control Block (PCB) table.
+- Launching worker processes according to command-line parameters.
+- Enforcing a maximum number of concurrent processes.
+- Tracking process start and termination times.
+- Printing the process table at regular simulated time intervals.
+- Calculating total runtime statistics for all workers.
+- Handling SIGINT (Ctrl+C) and SIGALRM (60-second timeout) to ensure
+  proper cleanup of child processes and shared memory.
+
+The main loop advances the simulated clock, checks for terminated
+children, launches new workers when allowed, and prints the system
+state every 0.5 simulated seconds.
+
+On termination (normal or signal), all remaining child processes are
+killed and shared memory is detached and removed.
+*/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -109,7 +129,7 @@ void parseArgs(int argc, char *argv[]) {
 
     int opt;
 
-    while ((opt = getopt(argc, argv, "n:s:t:i:")) != -1) {
+    while ((opt = getopt(argc, argv, "n:s:t:i:h")) != -1) {
 
         switch (opt) {
 
@@ -146,12 +166,17 @@ void parseArgs(int argc, char *argv[]) {
                 break;
 
             case 'h':
-                printf("Usage: ./oss -n x -s x -t x -i x\n");
-                exit(0);
+    			printf("Usage: ./oss -n x -s x -t x -i x\n\n");
+    			printf("Options:\n");
+    			printf("  -n x : Total number of worker processes to launch (minimum 1)\n");
+    			printf("  -s x : Maximum number of concurrent processes allowed (minimum 1)\n");
+    			printf("  -t x : Total simulated runtime limit in seconds (must be >= 0)\n");
+    			printf("  -i x : Interval (in seconds) between launching processes (must be >= 0)\n");
+    			printf("  -h   : Display this help message\n");
+    			exit(0);
 
             default:
-                fprintf(stderr,
-                        "Usage: ./oss -n x -s x -t x -i x\n");
+                fprintf(stderr, "Usage: ./oss -n x -s x -t x -i x\n");
                 exit(1);
         }
     }

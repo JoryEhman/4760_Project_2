@@ -1,6 +1,21 @@
-/**************************************************************
- * worker.c
- **************************************************************/
+/*
+worker.c
+
+This file implements the worker process executed by OSS.
+
+Each worker:
+- Attaches to the shared simulated clock.
+- Reads its assigned termination time from command-line arguments.
+- Prints its start information when it begins execution.
+- Continuously monitors the shared clock.
+- Prints a message every simulated second that passes.
+- Terminates when the simulated time reaches its assigned
+  ending time.
+- Detaches from shared memory before exiting.
+
+Workers do not modify the clock. They only observe it and
+self-terminate when their scheduled runtime expires.
+*/
 
 #include <stdio.h>
 #include <stdlib.h>

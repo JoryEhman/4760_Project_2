@@ -6,11 +6,11 @@ Environment: macOS (development), CLion 2024.2, Linux, (opsys.cs.umsl.edu – fi
 How to compile the project:
     Type 'make'
 
-How To Run:
-    ./oss
+How to clean the project directory:
+    Type 'make clean'
 
-Example:
-    ./oss -n 5 -s 2 -t 3 -i 0.5
+How To Run:
+    ./oss -n x -s x -t x -i x
 
 Command Line Options:
     -n x : Total number of worker processes to launch (minimum 1)
@@ -20,9 +20,8 @@ Command Line Options:
     -h : Displays usage information
 
 Default Values:
-    If no arguments are provided: ./oss
-
-Default values: n = 1 s = 1 t = 0 (no time limit) i = 0
+    If no arguments are provided:
+        n = 1 s = 1 t = 0 (no time limit) i = 0
 
 If certain options are omitted, defaults apply.
     Example: ./oss -n 4 -t 2
