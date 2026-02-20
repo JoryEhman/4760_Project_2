@@ -26,15 +26,18 @@ int childrenInSystem = 0;
 unsigned long long totalRuntimeNano = 0;
 
 /* ===== Correct Defaults ===== */
-int n = 1;            // must be >= 1
-int simul = 1;        // must be >= 1
-float timelimit = 0;  // can be 0
-float interval = 0;   // can be 0
+int n = 1;
+int simul = 1;
+float timelimit = 0;
+float interval = 0;
 /* ============================================================ */
 
 void cleanup(int sig) {
 
-    printf("\nOSS: Caught signal %d\n", sig);
+    const char msg[] =
+        "\nOSS: 60-second timeout reached. Cleaning up and exiting.\n";
+
+    write(STDOUT_FILENO, msg, sizeof(msg) - 1);
 
     for (int i = 0; i < MAX_PROCS; i++) {
         if (processTable[i].occupied) {
@@ -42,12 +45,14 @@ void cleanup(int sig) {
         }
     }
 
-    shmdt(simClock);
-    shmctl(shmid, IPC_RMID, NULL);
-    exit(1);
-}
+    if (simClock != NULL)
+        shmdt(simClock);
 
-/* ============================================================ */
+    if (shmid > 0)
+        shmctl(shmid, IPC_RMID, NULL);
+
+    _exit(1);
+}
 
 void incrementClock() {
     simClock->nanoseconds += CLOCK_INCREMENT;
@@ -70,11 +75,9 @@ int findFreePCB() {
     return -1;
 }
 
-/* ============================================================ */
-
 void printProcessTable() {
 
-    printf("\nOSS PID:%d SysClockS:%u SysClockNano:%u\n",
+    printf("\nOSS PID: %d SysClockS: %u SysClockNano: %u\n",
            getpid(), simClock->seconds, simClock->nanoseconds);
 
     printf("Process Table:\n");
@@ -101,8 +104,6 @@ void printProcessTable() {
 
     fflush(stdout);
 }
-
-/* ============================================================ */
 
 void parseArgs(int argc, char *argv[]) {
 
@@ -144,6 +145,10 @@ void parseArgs(int argc, char *argv[]) {
                 }
                 break;
 
+            case 'h':
+                printf("Usage: ./oss -n x -s x -t x -i x\n");
+                exit(0);
+
             default:
                 fprintf(stderr,
                         "Usage: ./oss -n x -s x -t x -i x\n");
@@ -152,11 +157,19 @@ void parseArgs(int argc, char *argv[]) {
     }
 }
 
-/* ============================================================ */
-
 int main(int argc, char *argv[]) {
 
     parseArgs(argc, argv);
+
+    /* ===== REQUIRED STARTUP OUTPUT ===== */
+    printf("OSS starting, PID: %d PPID: %d\n", getpid(), getppid());
+    printf("Called with:\n");
+    printf("-n %d\n", n);
+    printf("-s %d\n", simul);
+    printf("-t %.3f\n", timelimit);
+    printf("-i %.3f\n\n", interval);
+    fflush(stdout);
+    /* ==================================== */
 
     signal(SIGALRM, cleanup);
     signal(SIGINT, cleanup);
@@ -191,8 +204,6 @@ int main(int argc, char *argv[]) {
             lastPrintBoundary = boundary;
         }
 
-        /* ===== Reap Children (FIXED RUNTIME ACCOUNTING) ===== */
-
         int status;
         pid_t pid;
 
@@ -221,8 +232,6 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        /* ===== Launch Logic ===== */
-
         if (totalLaunched < n &&
             childrenInSystem < simul &&
             currentNano >= nextLaunchTime) {
@@ -235,25 +244,6 @@ int main(int argc, char *argv[]) {
                 int nanoPart =
                     (int)((timelimit - secPart) * BILLION);
 
-                pid_t cpid = fork();
-
-                if (cpid == 0) {
-
-                    char secStr[20];
-                    char nanoStr[20];
-
-                    sprintf(secStr, "%d", secPart);
-                    sprintf(nanoStr, "%d", nanoPart);
-
-                    execl("./worker", "worker",
-                          secStr, nanoStr, NULL);
-
-                    perror("exec");
-                    exit(1);
-                }
-
-                processTable[idx].occupied = 1;
-                processTable[idx].pid = cpid;
                 processTable[idx].startSeconds = simClock->seconds;
                 processTable[idx].startNano = simClock->nanoseconds;
 
@@ -268,6 +258,28 @@ int main(int argc, char *argv[]) {
                     processTable[idx].endingTimeNano -= BILLION;
                 }
 
+                pid_t cpid = fork();
+
+                if (cpid == 0) {
+
+                    char secStr[20];
+                    char nanoStr[20];
+
+                    sprintf(secStr, "%u",
+                            processTable[idx].endingTimeSeconds);
+                    sprintf(nanoStr, "%u",
+                            processTable[idx].endingTimeNano);
+
+                    execl("./worker", "worker",
+                          secStr, nanoStr, NULL);
+
+                    perror("exec");
+                    exit(1);
+                }
+
+                processTable[idx].occupied = 1;
+                processTable[idx].pid = cpid;
+
                 childrenInSystem++;
                 totalLaunched++;
                 nextLaunchTime = currentNano + intervalNano;
@@ -275,7 +287,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    printf("\nOSS PID:%d Terminating\n", getpid());
+    printf("\nOSS PID: %d Terminating\n", getpid());
     printf("%d workers were launched and terminated\n", totalLaunched);
     printf("Workers ran for a combined time of %llu seconds %llu nanoseconds.\n",
            totalRuntimeNano / BILLION,

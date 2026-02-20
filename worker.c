@@ -12,13 +12,12 @@
 int main(int argc, char *argv[]) {
 
     if (argc < 3) {
-        fprintf(stderr, "Usage: worker durationSec durationNano\n");
+        fprintf(stderr, "Usage: worker endSec endNano\n");
         exit(1);
     }
 
-    /* Duration requested */
-    unsigned int durationSec = atoi(argv[1]);
-    unsigned int durationNano = atoi(argv[2]);
+    unsigned int targetSec = atoi(argv[1]);
+    unsigned int targetNano = atoi(argv[2]);
 
     int shmid = shmget(SHM_KEY, sizeof(SimClock), 0666);
     if (shmid == -1) {
@@ -32,21 +31,11 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    /* Record start time */
     unsigned int startSec = clock->seconds;
     unsigned int startNano = clock->nanoseconds;
 
-    /* Compute absolute termination time */
-    unsigned int targetSec = startSec + durationSec;
-    unsigned int targetNano = startNano + durationNano;
-
-    if (targetNano >= BILLION) {
-        targetSec++;
-        targetNano -= BILLION;
-    }
-
-    printf("WORKER PID:%d PPID:%d\n", getpid(), getppid());
-    printf("SysClockS:%u SysClockNano:%u TermTimeS:%u TermTimeNano:%u\n",
+    printf("WORKER PID: %d PPID: %d\n", getpid(), getppid());
+    printf("SysClockS: %u SysClockNano: %u TermTimeS: %u TermTimeNano: %u\n",
            startSec, startNano, targetSec, targetNano);
     printf("--Just Starting\n");
     fflush(stdout);
@@ -58,12 +47,11 @@ int main(int argc, char *argv[]) {
         unsigned int curSec = clock->seconds;
         unsigned int curNano = clock->nanoseconds;
 
-        /* Correct relative termination check */
         if (curSec > targetSec ||
            (curSec == targetSec && curNano >= targetNano)) {
 
-            printf("WORKER PID:%d PPID:%d\n", getpid(), getppid());
-            printf("SysClockS:%u SysClockNano:%u TermTimeS:%u TermTimeNano:%u\n",
+            printf("WORKER PID: %d PPID: %d\n", getpid(), getppid());
+            printf("SysClockS: %u SysClockNano: %u TermTimeS: %u TermTimeNano: %u\n",
                    curSec, curNano, targetSec, targetNano);
             printf("--Terminating\n");
             fflush(stdout);
@@ -72,8 +60,8 @@ int main(int argc, char *argv[]) {
 
         if (curSec > lastPrinted) {
 
-            printf("WORKER PID:%d PPID:%d\n", getpid(), getppid());
-            printf("SysClockS:%u SysClockNano:%u TermTimeS:%u TermTimeNano:%u\n",
+            printf("WORKER PID: %d PPID: %d\n", getpid(), getppid());
+            printf("SysClockS: %u SysClockNano: %u TermTimeS: %u TermTimeNano: %u\n",
                    curSec, curNano, targetSec, targetNano);
             printf("--%u seconds have passed since starting\n",
                    curSec - startSec);
