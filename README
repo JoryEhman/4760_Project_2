@@ -1,0 +1,45 @@
+Name: Jory Ehman
+Date: February 19th 2026
+
+Environment: macOS (development), CLion 2024.2, Linux, (opsys.cs.umsl.edu – final testing environment)
+
+How to compile the project:
+    Type 'make'
+
+How To Run:
+    ./oss
+
+Example:
+    ./oss -n 5 -s 2 -t 3 -i 0.5
+
+Command Line Options:
+    -n x : Total number of worker processes to launch (minimum 1)
+    -s x : Maximum number of concurrent processes allowed (minimum 1)
+    -t x : Total simulated runtime limit in seconds (must be >=0)
+    -i x : Interval (in seconds) between launching processes (must be >=0)
+    -h : Displays usage information
+
+Default Values:
+    If no arguments are provided: ./oss
+
+Default values: n = 1 s = 1 t = 0 (no time limit) i = 0
+
+If certain options are omitted, defaults apply.
+    Example: ./oss -n 4 -t 2
+    Results in: s = 1 i = 0
+
+Generative AI Usage: ChatGPT
+Prompts:
+    - “Explain in depth how each file interacts in a shared memory scheduler.”
+    - “What would appropriate program output look like?”
+    - “Help verify signal handling logic for 60-second termination.”
+
+
+
+Summary:
+    ChatGPT was used as a learning aid to better understand shared memory
+    implementation, process control flow, non-blocking scheduling,
+    signal-safe programming practices, and proper cleanup design.
+
+    All code was reviewed, modified, and understood before final submission.
+
